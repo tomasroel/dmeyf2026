@@ -1,7 +1,10 @@
 #Archivos que considero datasets grandes, lastima que git no lo permita nativamente
 *.csv
 *.csv.gz
-
+*.parquet.gzip
+*.parquet
+*.gzip
+*.db
 
 # Windows image file caches
 Thumbs.db
@@ -167,6 +170,7 @@ Session.vim
 
 # Python
 *.pyc
+.venv/
 
 # Scala - sbt specific
 .cache
@@ -182,3 +186,5 @@ project/target
 .worksheet
 
 .vscode/settings.json
+uv.lock
+
