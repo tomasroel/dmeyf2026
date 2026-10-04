@@ -5,6 +5,7 @@ description = "Diplomatura DMEyF 2026 - notebooks de clase"
 requires-python = ">=3.11"
 dependencies = [
     "duckdb>=1.5.5",
+    "graphviz>=0.21",
     "ipykernel>=7.3.0",
     "joblib>=1.6.0",
     "jupyter>=1.1.1",

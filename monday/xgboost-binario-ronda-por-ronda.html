@@ -1,0 +1,975 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XGBoost binario, ronda por ronda</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+<style>body{margin:0}</style>
+</head>
+<body>
+<style>
+:root{
+  --paper:#F9FAF8; --sunk:#F1F3F0;
+  --ink:#171C19; --ink-2:#4B554F; --ink-3:#818B84;
+  --rule:#E0E4E0; --rule-soft:#ECEFEC;
+  --p0:#1F7A52; --p1:#7B3FA0;
+  --p0-rgb:31,122,82; --p1-rgb:123,63,160;
+  --field-mid:#ECEFEA;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#101412; --sunk:#181D1A;
+    --ink:#E8EBE8; --ink-2:#A9B2AC; --ink-3:#78827B;
+    --rule:#272E29; --rule-soft:#1E2420;
+    --p0:#2FA473; --p1:#A97BD8;
+    --p0-rgb:47,164,115; --p1-rgb:169,123,216;
+    --field-mid:#242B27;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#101412; --sunk:#181D1A;
+  --ink:#E8EBE8; --ink-2:#A9B2AC; --ink-3:#78827B;
+  --rule:#272E29; --rule-soft:#1E2420;
+  --p0:#2FA473; --p1:#A97BD8;
+  --p0-rgb:47,164,115; --p1-rgb:169,123,216;
+  --field-mid:#242B27;
+}
+
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);
+  font-family:"Source Serif 4","Iowan Old Style",Georgia,serif;font-size:18px;line-height:1.66;
+  -webkit-font-smoothing:antialiased}
+.page{max-width:1080px;margin:0 auto;padding-inline:24px;padding-block:64px 90px}
+.prose{max-width:700px}
+.topbar{display:flex;justify-content:flex-end;margin-bottom:22px}
+#theme-btn{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);border-bottom:1.5px solid transparent;padding:4px 0}
+#theme-btn:hover{color:var(--ink);border-bottom-color:var(--ink)}
+.mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+
+/* ---------- tipografía ---------- */
+h1,h2,h3{font-family:Fraunces,"Iowan Old Style",Georgia,serif;font-weight:600;font-variation-settings:"opsz" 60;margin:0}
+h1{font-size:clamp(40px,6.4vw,66px);line-height:1.02;letter-spacing:-.02em;font-weight:700;text-wrap:balance}
+h2{font-size:clamp(30px,4.2vw,42px);line-height:1.08;letter-spacing:-.02em;font-weight:700;text-wrap:balance}
+h3{font-size:19px;line-height:1.25;letter-spacing:-.008em}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--p1);margin-bottom:20px}
+.lede{font-size:22px;line-height:1.52;color:var(--ink-2);margin:22px 0 0}
+.lede em{font-style:italic;color:var(--ink)}
+p{margin:0 0 18px}
+.cap{font-size:15px;line-height:1.5;color:var(--ink-3);margin:12px 0 0;max-width:60ch}
+.cap em{font-style:italic}
+
+/* ---------- matemática ---------- */
+i.v{font-style:italic}
+.ovl{display:inline-block;border-top:1px solid currentColor;padding-top:.08em;line-height:1.05}
+.frac{display:inline-flex;flex-direction:column;text-align:center;vertical-align:middle;margin:0 .18em;position:relative;top:-.06em}
+.frac > span{padding:0 .45em;line-height:1.32}
+.frac > .nu{padding-bottom:.14em}
+.frac > .nu + span{padding-top:.12em}
+.frac > .nu{border-bottom:1px solid currentColor}
+.eq{display:block;text-align:center;font-size:21px;line-height:1.5;margin:16px 0 18px;color:var(--ink);white-space:nowrap;overflow-x:auto;overflow-y:hidden}
+.eq + .eq{margin-top:-6px}
+.eq sub,.eq sup{font-style:normal}
+sub,sup{font-size:.7em;line-height:0}
+
+/* ---------- cabecera de sección ---------- */
+.rule{border:0;border-top:1px solid var(--rule);margin:52px 0 0}
+.chapter{max-width:700px;margin:46px 0 44px}
+.chapter .lede{font-size:19px;margin-top:16px}
+.sec{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-3);margin:56px 0 22px}
+
+/* ---------- consola ---------- */
+.lab{margin-top:52px}
+.transport{display:flex;align-items:flex-end;gap:26px;flex-wrap:wrap;margin-bottom:10px}
+.bigno{display:flex;align-items:baseline;gap:10px}
+.bigno .n{font-family:Fraunces,serif;font-weight:700;font-size:58px;line-height:.88;letter-spacing:-.04em;font-variant-numeric:tabular-nums;font-variation-settings:"opsz" 144}
+.bigno .l{font-family:"IBM Plex Mono",monospace;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);max-width:8ch;line-height:1.3}
+.acts{display:flex;align-items:center;gap:18px;padding-bottom:6px}
+button{font-family:"IBM Plex Mono",monospace;font-size:12.5px;letter-spacing:.06em;color:var(--ink-2);
+  background:none;border:0;padding:4px 0;cursor:pointer;border-bottom:1.5px solid transparent}
+button:hover{color:var(--ink);border-bottom-color:var(--ink)}
+button:disabled{opacity:.32;cursor:not-allowed;border-bottom-color:transparent;color:var(--ink-3)}
+button.primary{font-family:Fraunces,serif;font-size:17px;font-weight:600;color:var(--ink);border-bottom:1.5px solid var(--ink);padding:2px 0;min-width:108px;text-align:left}
+:focus-visible{outline:2px solid var(--p1);outline-offset:3px}
+.scrub{flex:1 1 280px;min-width:220px;padding-bottom:10px}
+input[type=range]{width:100%;accent-color:var(--ink);cursor:pointer;height:18px}
+
+.params{display:grid;grid-template-columns:repeat(4,1fr);gap:30px;margin:26px 0 46px}
+.param .top{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:2px}
+.param code,.param .v{font-family:"IBM Plex Mono",monospace;font-size:12.5px;font-variant-numeric:tabular-nums}
+.param code{color:var(--ink-2)}
+.param .v{color:var(--ink);font-weight:500}
+.param .d{font-size:14px;line-height:1.4;color:var(--ink-3);margin-top:5px}
+
+/* ---------- gráficos ---------- */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:44px;margin-bottom:52px}
+.chart h3{margin-bottom:3px}
+.sub{font-size:15px;color:var(--ink-3);margin:0 0 12px}
+svg{display:block;width:100%;height:auto}
+.chartwrap{position:relative}
+.field{position:relative;line-height:0;border:1px solid var(--rule);border-radius:2px}
+.field canvas{display:block;width:100%;height:auto;background:var(--field-mid)}
+.field svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.keys{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin:0 0 12px}
+.keys span{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-3);display:flex;align-items:center;gap:7px}
+.keys .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.keys .sqr{width:9px;height:9px;border-radius:1px;display:inline-block}
+.keys .cb{width:150px;height:24px}
+.treescroll{overflow-x:auto;padding-bottom:6px}
+.thr{display:flex;align-items:center;gap:12px;margin-top:14px;
+  font-family:"IBM Plex Mono",monospace;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.thr input{flex:0 1 210px;margin:0}
+.thr .v{color:var(--ink);font-size:14px;text-transform:none;letter-spacing:0;font-variant-numeric:tabular-nums}
+
+/* ---------- lectura de estado ---------- */
+.readout{display:grid;grid-template-columns:1.3fr 1fr;gap:44px;margin-top:8px}
+.readout h3{font-family:"IBM Plex Mono",monospace;font-size:11.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-3);font-weight:400;margin-bottom:12px}
+.readout p{font-size:17px;line-height:1.6;color:var(--ink-2);margin:0 0 12px}
+.readout p:last-child{margin-bottom:0}
+b{font-weight:600;color:var(--ink)}
+.num{font-family:"IBM Plex Mono",monospace;font-size:15px;font-variant-numeric:tabular-nums;color:var(--ink);
+  background:var(--sunk);border-radius:2px;padding:1px 5px}
+#narrative p{font-size:16.5px;line-height:1.58;color:var(--ink-2);margin:0 0 13px}
+#narrative p:last-child{margin-bottom:0}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:26px 30px}
+.metric .mv{font-family:Fraunces,serif;font-size:30px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.05}
+.metric .ml{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin-top:4px;line-height:1.35}
+
+/* ---------- pasos ---------- */
+.steps{display:grid;grid-template-columns:repeat(2,1fr);gap:48px 64px;max-width:960px}
+.step .no{font-family:"IBM Plex Mono",monospace;font-size:11.5px;letter-spacing:.18em;color:var(--p1)}
+.step h3{margin:4px 0 0}
+.step p{font-size:16.5px;line-height:1.56;color:var(--ink-2);margin:0}
+.step .eq{font-size:20px;margin:14px 0 16px}
+
+.notes{display:grid;grid-template-columns:repeat(2,1fr);gap:34px 64px;max-width:960px}
+.notes.lgbm{max-width:none;gap:44px 64px}
+.fig{margin:14px 0 16px}
+.figbar{display:flex;align-items:center;gap:16px;margin-bottom:6px}
+.figstep{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.note h3{font-size:17px;margin-bottom:4px}
+.note p{font-size:16.5px;line-height:1.55;color:var(--ink-2);margin:0}
+.note p + p{margin-top:15px}
+
+.tip{position:absolute;pointer-events:none;opacity:0;transform:translate(-50%,-120%);
+  background:var(--ink);color:var(--paper);border-radius:3px;padding:7px 10px;
+  font-family:"IBM Plex Mono",monospace;font-size:11.5px;line-height:1.5;white-space:nowrap;z-index:5;
+  transition:opacity .1s linear}
+.tip.on{opacity:1}
+
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+@media (max-width:900px){
+  body{font-size:17px}
+  .params{grid-template-columns:repeat(2,1fr);gap:28px}
+  .grid2,.steps,.notes,.readout{grid-template-columns:1fr;gap:34px}
+  h1{font-size:clamp(34px,8vw,46px)}
+  .lede{font-size:19px}
+}
+@media (max-width:560px){ .params{grid-template-columns:1fr} .metrics{grid-template-columns:1fr} }
+</style>
+
+<div class="page">
+
+<div class="topbar">
+  <button id="theme-btn" type="button" aria-pressed="false">◐ Modo oscuro</button>
+</div>
+
+<header class="prose">
+  <div class="eyebrow">Clasificación binaria</div>
+  <h1>XGBoost binario, ronda por ronda</h1>
+  <p class="lede">Un clasificador de XGBoost no devuelve una etiqueta: devuelve <em>una probabilidad para cada punto del plano</em>. Y no la calcula de una vez, sino sumando treinta árboles chiquitos, cada uno corrigiendo un poco lo que el anterior dejó mal. Esta página entrena uno de verdad en tu navegador y lo abre por dentro.</p>
+</header>
+
+
+<hr class="rule">
+
+<div class="lab">
+  <div class="transport">
+    <div class="bigno"><span class="n" id="round-n">5</span><span class="l">de 30 árboles</span></div>
+    <div class="acts">
+      <button class="primary" id="btn-play" type="button">▶ Entrenar</button>
+      <button id="btn-prev" type="button">◀ ANTERIOR</button>
+      <button id="btn-next" type="button">SIGUIENTE ▶</button>
+      <button id="btn-reset" type="button">REINICIAR</button>
+    </div>
+    <div class="scrub"><input type="range" id="rng-round" min="0" max="30" step="1" value="5" aria-label="Ronda"></div>
+  </div>
+
+  <div class="params">
+    <div class="param">
+      <div class="top"><code>learning_rate η</code><span class="v" id="v-eta">0,25</span></div>
+      <input type="range" id="p-eta" min="0.05" max="1.5" step="0.05" value="0.25">
+      <div class="d">Qué fracción de cada árbol se suma.</div>
+    </div>
+    <div class="param">
+      <div class="top"><code>max_depth</code><span class="v" id="v-depth">3</span></div>
+      <input type="range" id="p-depth" min="1" max="4" step="1" value="3">
+      <div class="d">Cortes encadenados. Con 1 no hay interacción entre features.</div>
+    </div>
+    <div class="param">
+      <div class="top"><code>lambda λ</code><span class="v" id="v-lambda">1,0</span></div>
+      <input type="range" id="p-lambda" min="0" max="10" step="0.5" value="1">
+      <div class="d">Regularización: encoge el valor de cada hoja.</div>
+    </div>
+    <div class="param">
+      <div class="top"><code>min_child_weight</code><span class="v" id="v-mcw">1,0</span></div>
+      <input type="range" id="p-mcw" min="0" max="6" step="0.25" value="1">
+      <div class="d">Peso mínimo por hoja. Lo ya resuelto casi no cuenta.</div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="chart">
+      <h3>La probabilidad que predice el modelo</h3>
+      <p class="sub">en cada punto del plano</p>
+      <div class="keys">
+        <span>p&nbsp;<svg class="cb" id="cbar-p" viewBox="0 0 150 24"></svg></span>
+        <span><i class="sqr" style="background:var(--p0)"></i>clase 0</span>
+        <span><i class="dot" style="background:var(--p1)"></i>clase 1</span>
+      </div>
+      <div class="field chartwrap"><canvas id="cv-field" width="520" height="410"></canvas><svg id="ov-field" viewBox="0 0 520 410"></svg><div class="tip" id="tip-field"></div></div>
+      <div class="thr">
+        <label for="p-thr">umbral</label>
+        <input type="range" id="p-thr" min="0.05" max="0.95" step="0.01" value="0.5">
+        <span class="v" id="v-thr">0,50</span>
+      </div>
+      <p class="cap">La línea gruesa es el umbral: movelo y mirá cómo la frontera se corre sin que el modelo cambie en nada. Las líneas finas son <i class="v">p</i> = 0,25 y 0,75, fijas.</p>
+    </div>
+    <div class="chart">
+      <h3>Cuánto mueve la probabilidad este árbol</h3>
+      <p class="sub">en puntos porcentuales</p>
+      <div class="keys">
+        <span>Δp&nbsp;<svg class="cb" id="cbar-d" viewBox="0 0 150 24"></svg></span>
+        <span><i style="display:inline-block;width:14px;border-top:1.5px dashed var(--ink-3)"></i>cortes del árbol</span>
+      </div>
+      <div class="field chartwrap"><canvas id="cv-delta" width="520" height="410"></canvas><svg id="ov-delta" viewBox="0 0 520 410"></svg><div class="tip" id="tip-delta"></div></div>
+      <p class="cap">El árbol suma lo mismo en toda una región, pero el efecto no es parejo: donde <i class="v">p</i> ya está cerca de 0 o de 1, el mismo empujón casi no mueve nada.</p>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="chart">
+      <h3>Qué probabilidad recibió cada punto</h3>
+      <p class="sub">una fila por clase real</p>
+      <div class="chartwrap"><div id="chart-strip"></div><div class="tip" id="tip-strip"></div></div>
+      <p class="cap">Cuanto más se separan las dos filas hacia sus extremos, mejor discrimina el modelo. Los que quedan cruzados son, casi siempre, los de etiqueta dada vuelta.</p>
+    </div>
+    <div class="chart">
+      <h3>Cuánto pesa cada punto en el árbol que viene</h3>
+      <p class="sub"><i class="v">h</i> = <i class="v">p</i>(1 − <i class="v">p</i>)</p>
+      <div class="chartwrap"><div id="chart-h"></div><div class="tip" id="tip-h"></div></div>
+      <p class="cap">Todos caen sobre esta curva, a la altura que les toca según su <i class="v">p</i>. Los ya resueltos se van a los costados y dejan de pesar; los indecisos se amontonan arriba y deciden el próximo corte.</p>
+    </div>
+  </div>
+
+  <div class="chart" style="margin-bottom:52px">
+    <h3>El árbol de esta ronda</h3>
+    <p class="sub">cada nodo, con el corte que eligió y lo que aporta cada hoja</p>
+    <div class="treescroll"><div id="chart-tree"></div></div>
+  </div>
+
+  <div class="grid2">
+    <div class="chart">
+      <h3>Log loss de entrenamiento</h3>
+      <p class="sub">qué tan buenas son las probabilidades, ronda a ronda</p>
+      <div class="chartwrap"><div id="chart-loss"></div><div class="tip" id="tip-loss"></div></div>
+      <p class="cap" id="hint"></p>
+    </div>
+    <div class="chart">
+      <h3>Qué pasó en esta ronda</h3>
+      <div id="narrative" style="margin-top:10px"></div>
+      <div class="metrics" id="metrics" style="margin-top:30px"></div>
+    </div>
+  </div>
+</div>
+
+<div class="sec">El algoritmo completo, en seis pasos</div>
+<div class="steps">
+  <div class="step">
+    <div class="no">01</div>
+    <h3>El punto de partida</h3>
+    <span class="eq"><i class="v">p</i><sub>0</sub> = <span class="frac"><span class="nu"><i class="v">n</i><sub>1</sub></span><span><i class="v">n</i><sub>1</sub> + <i class="v">n</i><sub>0</sub></span></span> &nbsp;←&nbsp; tasa base</span><span class="eq"><i class="v">F</i><sub>0</sub> = log <span class="frac"><span class="nu"><i class="v">p</i><sub>0</sub></span><span>1 − <i class="v">p</i><sub>0</sub></span></span> = log <span class="frac"><span class="nu"><i class="v">n</i><sub>1</sub></span><span><i class="v">n</i><sub>0</sub></span></span></span>
+    <p>Antes del primer árbol el modelo ya predice algo, y lo que predice es <b>la tasa base</b>: la proporción de unos que hay en los datos, <i class="v">p</i><sub>0</sub>. Es la mejor apuesta posible sin mirar ninguna feature, y es exactamente lo que ves en la ronda 0 — el mismo valor en todo el plano, sin frontera. XGBoost no la guarda como probabilidad sino como su log-odds, <i class="v">F</i><sub>0</sub>, que es lo que llama <span class="mono" style="font-size:.86em">base_score</span>, porque todo lo que los árboles van a sumar vive en esa escala. Con clases balanceadas, <i class="v">p</i><sub>0</sub> = 0,5 y <i class="v">F</i><sub>0</sub> = 0; con 5% de positivos, <i class="v">p</i><sub>0</sub> = 0,05 y <i class="v">F</i><sub>0</sub> = −2,94, y todos los árboles corrigen desde ahí. El modelo no arranca en cero: arranca en la tasa base.</p>
+  </div>
+  <div class="step">
+    <div class="no">02</div>
+    <h3>De log-odds a probabilidad</h3>
+    <span class="eq"><i class="v">p</i> = σ(<i class="v">F</i>) = <span class="frac"><span class="nu">1</span><span>1 + <i class="v">e</i><sup>−<i class="v">F</i></sup></span></span></span>
+    <p>Los árboles suman números reales sin techo ni piso: eso es el espacio de log-odds. La sigmoide los aplasta al intervalo (0, 1) recién al final. Sumar +1 a un punto que estaba en 0,50 lo lleva a 0,73; sumarle +1 a uno que estaba en 0,97 lo deja en 0,99.</p>
+  </div>
+  <div class="step">
+    <div class="no">03</div>
+    <h3>Cuánto y en qué dirección se erra</h3>
+    <span class="eq"><i class="v">g</i><sub>i</sub> = <i class="v">p</i><sub>i</sub> − <i class="v">y</i><sub>i</sub> &nbsp;&nbsp;&nbsp; <i class="v">h</i><sub>i</sub> = <i class="v">p</i><sub>i</sub>(1 − <i class="v">p</i><sub>i</sub>)</span>
+    <p>Las dos derivadas de la pérdida logística, evaluadas donde está parado el modelo. El gradiente <i class="v">g</i> marca la dirección del error; la curvatura <i class="v">h</i> marca cuánta atención merece ese punto: máxima en <i class="v">p</i> = 0,5, casi nula cuando la probabilidad ya está pegada a 0 o a 1.</p>
+  </div>
+  <div class="step">
+    <div class="no">04</div>
+    <h3>Qué tan bueno es un corte</h3>
+    <span class="eq">sim = <span class="frac"><span class="nu"><i class="v">G</i><sup>2</sup></span><span><i class="v">H</i> + λ</span></span></span><span class="eq">gain = ½ (sim<sub>izq</sub> + sim<sub>der</sub> − sim<sub>padre</sub>) − γ</span>
+    <p>Con <i class="v">G</i> = Σ<i class="v">g</i><sub>i</sub> y <i class="v">H</i> = Σ<i class="v">h</i><sub>i</sub> dentro del nodo. El árbol prueba todos los cortes posibles de las dos features y se queda con el de mayor gain. Acá γ = 0: el freno lo ponen λ y el peso mínimo.</p>
+  </div>
+  <div class="step">
+    <div class="no">05</div>
+    <h3>Cuánto vale cada hoja</h3>
+    <span class="eq"><i class="v">w</i><sup>★</sup> = − <span class="frac"><span class="nu"><i class="v">G</i></span><span><i class="v">H</i> + λ</span></span></span>
+    <p>El valor que minimiza la pérdida aproximada dentro de la hoja, en log-odds. Acá <i class="v">H</i> no es "cuántos puntos hay" sino cuánta indecisión hay: una hoja con 40 puntos ya resueltos pesa menos que una con 8 dudosos. Eso es lo que XGBoost llama <em>cover</em>.</p>
+  </div>
+  <div class="step">
+    <div class="no">06</div>
+    <h3>Sumar poquito, y repetir</h3>
+    <span class="eq"><i class="v">F</i><sub>m</sub> = <i class="v">F</i><sub>m−1</sub> + η <i class="v">w</i><sup>★</sup></span>
+    <p>La hoja no se suma entera: se suma una fracción η. Lo que queda sin corregir vuelve a entrar como gradiente en la ronda siguiente, y el ciclo arranca de nuevo desde el paso 02 con probabilidades actualizadas. Treinta veces.</p>
+  </div>
+</div>
+
+<div class="sec">Cuatro cosas para probar con los controles</div>
+<div class="notes">
+  <div class="note">
+    <h3>Subí min_child_weight a 5</h3>
+    <p>Como <i class="v">h</i> nunca pasa de 0,25, un peso mínimo de 5 exige al menos 20 puntos dudosos por hoja. A medida que el modelo resuelve la mayoría, los árboles se quedan sin cortes legales y dejan de partir: el entrenamiento se frena solo. Es el parámetro más directo para impedir que se dedique a memorizar los pocos casos raros que quedan.</p>
+  </div>
+  <div class="note">
+    <h3>Poné max_depth en 1</h3>
+    <p>Cada árbol corta por <i class="v">x</i><sub>1</sub> <em>o</em> por <i class="v">x</i><sub>2</sub>, nunca por los dos encadenados. La superficie queda hecha de franjas rectas superpuestas y nunca cierra las puntas de las medialunas: sin profundidad no hay interacción entre features.</p>
+  </div>
+  <div class="note">
+    <h3>Poné η en 1,5 y avanzá de a una ronda</h3>
+    <p>El mapa se satura en cuatro o cinco rondas y el segundo panel se apaga: con <i class="v">p</i> pegado a 0 y a 1, tanto los gradientes como los pesos colapsan y ya casi no queda señal para empujar. El log loss baja rápido y después se dedica a memorizar el 8% de etiquetas mal puestas.</p>
+  </div>
+  <div class="note">
+    <h3>Mirá las dos filas de probabilidades</h3>
+    <p>Arrancan amontonadas en 0,5 y se van separando hacia los extremos. Los que quedan cruzados en el medio son los puntos del borde entre medialunas y los de etiqueta invertida: los únicos con peso apreciable y, por lo tanto, los que definen cada árbol nuevo.</p>
+  </div>
+</div>
+
+<hr class="rule">
+<div class="chapter">
+  <div class="eyebrow">La otra biblioteca</div>
+  <h2>Qué agrega LightGBM sobre todo esto</h2>
+  <p class="lede">Los seis pasos de arriba son idénticos en LightGBM: mismo gradiente, misma hessiana, misma fórmula de gain. Lo que cambia es la ingeniería de la búsqueda. Cinco diferencias, cada una con su dibujo.</p>
+</div>
+<div class="notes lgbm">
+  <div class="note" style="grid-column:1 / -1">
+    <h3>Crece por hoja, no por nivel</h3>
+    <div class="fig">
+      <div class="figbar">
+        <button id="grow-play" type="button">❚❚ Pausar</button>
+        <span class="figstep" id="grow-step">corte 6 de 6</span>
+      </div>
+      <div id="fig-grow"></div>
+    </div>
+    <p>Los dos árboles reciben los mismos cortes posibles, cada uno con su ganancia anotada, y los dos tienen el mismo presupuesto: seis cortes. El de la izquierda gasta el presupuesto completando un nivel antes de bajar al siguiente, que es como se construyó el árbol de más arriba en esta página. El de la derecha elige cada vez la hoja con mayor ganancia de todo el árbol, esté en el nivel que esté: profundiza la rama que rinde y deja sin partir las que no. Termina más desparejo y, con el mismo presupuesto, más abajo en la pérdida. Por eso el parámetro de tamaño de LightGBM es <span class="mono" style="font-size:.86em">num_leaves</span> (31 por defecto) y no <span class="mono" style="font-size:.86em">max_depth</span>, y por eso en datasets chicos sobreajusta antes: hay que atarlo con <span class="mono" style="font-size:.86em">min_data_in_leaf</span>. XGBoost también sabe hacerlo, con <span class="mono" style="font-size:.86em">grow_policy="lossguide"</span>.</p>
+  </div>
+
+  <div class="note">
+    <h3>Histogramas en vez de cortes exactos</h3>
+    <div class="fig"><div id="fig-hist"></div></div>
+    <p>Acá, para elegir un corte, recorrimos todos los puntos ordenados y evaluamos el gain en cada hueco entre dos valores consecutivos: <i class="v">n</i> − 1 candidatos por feature. LightGBM primero discretiza la feature en bins (<span class="mono" style="font-size:.86em">max_bin</span> = 255 por defecto) y acumula <i class="v">G</i> y <i class="v">H</i> por bin; después evalúa un candidato por borde de bin. El costo deja de depender de cuántas filas hay y pasa a depender de cuántos bins elegiste. XGBoost hoy también lo hace con <span class="mono" style="font-size:.86em">tree_method="hist"</span>, pero LightGBM nació con ese diseño.</p>
+  </div>
+
+  <div class="note">
+    <h3>El histograma del hermano sale por resta</h3>
+    <div class="fig"><div id="fig-sib"></div></div>
+    <p>Una vez armado el histograma del nodo padre, alcanza con construir el del hijo que tiene menos datos: el del otro hermano es la resta, bin por bin. Es la mitad del trabajo en cada nivel, sin ninguna aproximación de por medio, y es una de las razones de que la diferencia de velocidad se note tanto cuando hay millones de filas.</p>
+  </div>
+
+  <div class="note">
+    <h3>Features esparsas que viajan juntas</h3>
+    <div class="fig"><div id="fig-efb"></div></div>
+    <p>Después de un one-hot, muchas columnas casi nunca son no-nulas al mismo tiempo: si una fila es "rojo", no es "azul" ni "verde". <em>Exclusive Feature Bundling</em> detecta esos grupos mutuamente excluyentes y los empaqueta en una sola columna, corriendo los valores para que no se pisen. El costo por nodo baja de "cantidad de columnas" a "cantidad de paquetes". Viene activado por defecto (<span class="mono" style="font-size:.86em">enable_bundle</span>), y es lo que le permite bancarse bien las matrices anchas y esparsas.</p>
+  </div>
+
+  <div class="note">
+    <h3>Categóricas sin one-hot</h3>
+    <div class="fig"><div id="fig-cat"></div></div>
+    <p>Un árbol no sabe qué hacer con una columna de texto, y la salida habitual —one-hot, una columna binaria por categoría— le queda incómoda: cada corte puede separar una sola categoría del resto. Para aislar un grupo de tres categorías necesita tres niveles de profundidad, y cada uno de esos cortes deja una rama diminuta con un gain despreciable. Con cincuenta categorías, el árbol se gasta toda su profundidad pelando categorías de a una.</p>
+    <p>Declarándole cuáles son categóricas, LightGBM las parte de una. Ordena las categorías por la estadística acumulada de cada una —la suma de gradientes dividida por la de hessianas, o sea con cuánta fuerza y en qué dirección empuja esa categoría— y después busca el mejor corte sobre ese orden, igual que si fuera una variable numérica. Eso descansa en un resultado clásico: para este tipo de criterio, la partición óptima del conjunto de categorías siempre queda contigua en ese orden. Alcanza con probar los <i class="v">k</i> − 1 cortes del orden en vez de las 2<sup><i class="v">k</i>−1</sup> − 1 particiones posibles.</p>
+    <p>El precio es el sobreajuste: una categoría con tres filas puede quedar en la punta del orden por puro ruido, y el corte la premia. Por eso vienen los frenos — <span class="mono" style="font-size:.86em">max_cat_threshold</span> limita cuántos cortes se prueban (32 por defecto), <span class="mono" style="font-size:.86em">cat_smooth</span> empuja a las categorías con pocos datos hacia el promedio general y <span class="mono" style="font-size:.86em">min_data_per_group</span> exige un mínimo de filas por grupo.</p>
+  </div>
+</div>
+
+
+<script>
+(function(){
+"use strict";
+
+/* ---------------- datos ---------------- */
+function lcg(seed){ let s=seed>>>0; return function(){ s=(1664525*s+1013904223)>>>0; return s/4294967296; }; }
+const rnd = lcg(770912);
+function gauss(){ const u1=Math.max(rnd(),1e-9),u2=rnd(); return Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2); }
+const N = 160, DATA = [];
+for(let i=0;i<N;i++){
+  const cls = i % 2, t = Math.PI*(i/N) + rnd()*0.05;
+  let a,b;
+  if(cls===0){ a = Math.cos(t);     b = Math.sin(t); }
+  else       { a = 1 - Math.cos(t); b = 0.45 - Math.sin(t); }
+  const flip = rnd() < 0.08 ? 1 : 0;
+  DATA.push({ x1: a + gauss()*0.17, x2: b + gauss()*0.17, y: cls ^ flip });
+}
+const X1=DATA.map(d=>d.x1), X2=DATA.map(d=>d.x2), Y=DATA.map(d=>d.y);
+const JIT=DATA.map(()=>rnd()*2-1);
+const FEAT=[X1,X2], FNAME=["x₁","x₂"];
+const DOM=[[Math.min.apply(null,X1)-0.22, Math.max.apply(null,X1)+0.22],
+           [Math.min.apply(null,X2)-0.22, Math.max.apply(null,X2)+0.22]];
+const MROUNDS=30, GW=132, GH=104;
+
+/* ---------------- modelo ---------------- */
+function sig(z){ return 1/(1+Math.exp(-z)); }
+function buildTree(idx,g,h,depth,P){
+  let G=0,H=0; for(const i of idx){ G+=g[i]; H+=h[i]; }
+  const simP=(G*G)/(H+P.lambda);
+  const node={n:idx.length,G:G,H:H,w:-G/(H+P.lambda)};
+  if(depth>=P.depth || idx.length<2){ node.leaf=true; return node; }
+  let best=null;
+  for(let f=0;f<2;f++){
+    const v=FEAT[f], srt=idx.slice().sort((a,b)=>v[a]-v[b]);
+    let GL=0,HL=0;
+    for(let k=0;k<srt.length-1;k++){
+      GL+=g[srt[k]]; HL+=h[srt[k]];
+      if(v[srt[k+1]]-v[srt[k]]<1e-9) continue;
+      const HR=H-HL, GR=G-GL;
+      if(HL<P.mcw || HR<P.mcw) continue;
+      const gain=0.5*((GL*GL)/(HL+P.lambda)+(GR*GR)/(HR+P.lambda)-simP);
+      if(!best||gain>best.gain) best={gain:gain,f:f,k:k,srt:srt,thr:(v[srt[k]]+v[srt[k+1]])/2};
+    }
+  }
+  if(!best||best.gain<=1e-9){ node.leaf=true; return node; }
+  node.leaf=false; node.f=best.f; node.thr=best.thr; node.gain=best.gain;
+  node.left =buildTree(best.srt.slice(0,best.k+1),g,h,depth+1,P);
+  node.right=buildTree(best.srt.slice(best.k+1),  g,h,depth+1,P);
+  return node;
+}
+function tpred(nd,a,b){ while(!nd.leaf) nd=((nd.f===0?a:b)<nd.thr)?nd.left:nd.right; return nd.w; }
+function cellXY(gx,gy){
+  return [ DOM[0][0]+(gx+0.5)*(DOM[0][1]-DOM[0][0])/GW,
+           DOM[1][1]-(gy+0.5)*(DOM[1][1]-DOM[1][0])/GH ];
+}
+function logloss(F){ let s=0; for(let i=0;i<N;i++){ const p=Math.min(1-1e-9,Math.max(1e-9,sig(F[i]))); s-=Y[i]?Math.log(p):Math.log(1-p);} return s/N; }
+function acc(F){ let c=0; for(let i=0;i<N;i++) if((F[i]>0?1:0)===Y[i]) c++; return c/N; }
+
+function fit(P){
+  const ybar=Y.reduce((a,b)=>a+b,0)/N, F0=Math.log(ybar/(1-ybar));
+  let F=new Float64Array(N).fill(F0), field=new Float32Array(GW*GH).fill(F0);
+  const p0=new Float64Array(N).fill(sig(F0)), h0=new Float64Array(N).fill(sig(F0)*(1-sig(F0)));
+  const rounds=[{F:F.slice(),field:field.slice(),p:p0,h:h0,loss:logloss(F),acc:acc(F),F0:F0}];
+  const idxAll=DATA.map((_,i)=>i);
+  for(let m=1;m<=MROUNDS;m++){
+    const p=new Float64Array(N),g=new Float64Array(N),h=new Float64Array(N);
+    for(let i=0;i<N;i++){ p[i]=sig(F[i]); g[i]=p[i]-Y[i]; h[i]=Math.max(1e-9,p[i]*(1-p[i])); }
+    const tree=buildTree(idxAll,g,h,0,P);
+    const prevField=field, nf=new Float32Array(GW*GH);
+    for(let gy=0;gy<GH;gy++) for(let gx=0;gx<GW;gx++){
+      const c=cellXY(gx,gy), k=gy*GW+gx;
+      nf[k]=prevField[k]+P.eta*tpred(tree,c[0],c[1]);
+    }
+    const nF=new Float64Array(N);
+    for(let i=0;i<N;i++) nF[i]=F[i]+P.eta*tpred(tree,X1[i],X2[i]);
+    const np=new Float64Array(N),nh=new Float64Array(N);
+    for(let i=0;i<N;i++){ np[i]=sig(nF[i]); nh[i]=Math.max(1e-9,np[i]*(1-np[i])); }
+    rounds.push({tree:tree,pPrev:p,g:g,prevField:prevField,field:nf,F:nF,p:np,h:nh,loss:logloss(nF),acc:acc(nF)});
+    F=nF; field=nf;
+  }
+  return rounds;
+}
+
+/* ---------------- helpers ---------------- */
+function fmt(v,d){ return v.toFixed(d===undefined?2:d).replace(".",","); }
+function scale(d0,d1,r0,r1){ const f=(r1-r0)/(d1-d0); return v=>r0+(v-d0)*f; }
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+function cssv(n){ return getComputedStyle(document.body).getPropertyValue(n).trim(); }
+function rgbOf(v){ return cssv(v).split(',').map(Number); }
+function hexOf(v){ const h=cssv(v).replace('#',''); return [0,2,4].map(i=>parseInt(h.substr(i,2),16)); }
+function ticks(lo,hi,n){
+  const raw=(hi-lo)/n, mag=Math.pow(10,Math.floor(Math.log10(raw))), nm=raw/mag;
+  const step=(nm>=5?5:nm>=2?2:nm>=1?1:0.5)*mag, out=[];
+  for(let t=Math.ceil(lo/step)*step;t<=hi+1e-9;t+=step) out.push(Math.round(t/step)*step);
+  return out;
+}
+const MONO='IBM Plex Mono, monospace';
+function txt(x,y,s,o){ o=o||{};
+  return '<text x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" font-size="'+(o.size||12)+'" font-family="'+(o.font||MONO)+'"'+
+    ' fill="'+(o.fill||'var(--ink-3)')+'"'+(o.anchor?' text-anchor="'+o.anchor+'"':'')+'>'+s+'</text>'; }
+function mark(i,cx,cy,r){
+  const col='var(--'+(Y[i]?'p1':'p0')+')';
+  if(Y[i]) return '<circle cx="'+cx.toFixed(1)+'" cy="'+cy.toFixed(1)+'" r="'+r+'" fill="'+col+'" fill-opacity=".9" stroke="var(--paper)" stroke-width="1.6" data-i="'+i+'" class="pt"/>';
+  const s=r*1.7;
+  return '<rect x="'+(cx-s/2).toFixed(1)+'" y="'+(cy-s/2).toFixed(1)+'" width="'+s.toFixed(1)+'" height="'+s.toFixed(1)+'" rx="1" fill="'+col+'" fill-opacity=".9" stroke="var(--paper)" stroke-width="1.6" data-i="'+i+'" class="pt"/>';
+}
+
+/* ---------------- estado ---------------- */
+const P={ eta:0.25, depth:3, lambda:1, mcw:1 };
+let MODEL=fit(P), round=5, THR=0.5, playing=false, timer=null;
+const CW=520, CH=410, PADX=0, PADY=0;
+const sxF=scale(DOM[0][0],DOM[0][1],PADX,CW-PADX), syF=scale(DOM[1][0],DOM[1][1],CH-PADY,PADY);
+
+/* ---------------- campos ---------------- */
+const OFF=document.createElement('canvas'); OFF.width=GW; OFF.height=GH;
+function blend(a){
+  const c0=rgbOf('--p0-rgb'), c1=rgbOf('--p1-rgb'), bg=hexOf('--field-mid');
+  const c=a>0?c1:c0, aa=Math.min(1,Math.abs(a));
+  return [bg[0]+(c[0]-bg[0])*aa, bg[1]+(c[1]-bg[1])*aa, bg[2]+(c[2]-bg[2])*aa];
+}
+function paintField(id, vals, toAlpha){
+  const ctx=document.getElementById(id).getContext('2d');
+  const octx=OFF.getContext('2d'), img=octx.createImageData(GW,GH), d=img.data;
+  for(let k=0;k<GW*GH;k++){ const c=blend(toAlpha(vals[k])); d[k*4]=c[0]; d[k*4+1]=c[1]; d[k*4+2]=c[2]; d[k*4+3]=255; }
+  octx.putImageData(img,0,0);
+  ctx.clearRect(0,0,CW,CH); ctx.imageSmoothingEnabled=false;
+  ctx.drawImage(OFF,PADX,PADY,CW-2*PADX,CH-2*PADY);
+}
+function contour(vals, level){
+  const cw=(CW-2*PADX)/GW, ch=(CH-2*PADY)/GH; let d='';
+  for(let gy=0;gy<GH;gy++) for(let gx=0;gx<GW;gx++){
+    const v=vals[gy*GW+gx];
+    if(gx<GW-1 && (v-level)*(vals[gy*GW+gx+1]-level)<0){ const x=PADX+(gx+1)*cw; d+='M'+x.toFixed(1)+' '+(PADY+gy*ch).toFixed(1)+'v'+ch.toFixed(1); }
+    if(gy<GH-1 && (v-level)*(vals[(gy+1)*GW+gx]-level)<0){ const y=PADY+(gy+1)*ch; d+='M'+(PADX+gx*cw).toFixed(1)+' '+y.toFixed(1)+'h'+cw.toFixed(1); }
+  }
+  return d;
+}
+function fieldPoints(){ let s=''; for(let i=0;i<N;i++) s+=mark(i,sxF(X1[i]),syF(X2[i]),4.1); return s; }
+const alphaP = F => { const p=sig(F); return Math.sign(p-0.5)*Math.pow(Math.abs(2*p-1),0.85)*0.56; };
+
+
+
+function drawField(){
+  const r=MODEL[round], L=v=>Math.log(v/(1-v));
+  paintField('cv-field', r.field, alphaP);
+  document.getElementById('ov-field').innerHTML =
+    '<path d="'+contour(r.field,L(0.25))+'" stroke="var(--ink-3)" stroke-width="1" fill="none" opacity=".6"/>'+
+    '<path d="'+contour(r.field,L(0.75))+'" stroke="var(--ink-3)" stroke-width="1" fill="none" opacity=".6"/>'+
+    '<path d="'+contour(r.field,L(THR))+'" stroke="var(--ink)" stroke-width="1.8" fill="none" opacity=".85"/>'+
+    fieldPoints();
+  hookPts('ov-field','tip-field', i=>'clase real: '+Y[i]+'\np = '+fmt(MODEL[round].p[i],3)+'\nF = '+fmt(MODEL[round].F[i],2)+' log-odds');
+}
+function drawDelta(){
+  const m=Math.max(1,round), r=MODEL[m];
+  const dp=new Float32Array(GW*GH); let mx=1e-6;
+  for(let k=0;k<dp.length;k++){ dp[k]=sig(r.field[k])-sig(r.prevField[k]); mx=Math.max(mx,Math.abs(dp[k])); }
+  paintField('cv-delta', dp, v=>Math.sign(v)*Math.pow(Math.abs(v)/mx,0.8)*0.56);
+  const cuts=[];
+  (function walk(nd,b){
+    if(nd.leaf) return;
+    const b1=b.slice(), b2=b.slice();
+    if(nd.f===0){ cuts.push(['v',nd.thr,b[2],b[3]]); b1[1]=nd.thr; b2[0]=nd.thr; }
+    else        { cuts.push(['h',nd.thr,b[0],b[1]]); b1[3]=nd.thr; b2[2]=nd.thr; }
+    walk(nd.left,b1); walk(nd.right,b2);
+  })(r.tree,[DOM[0][0],DOM[0][1],DOM[1][0],DOM[1][1]]);
+  let s='';
+  cuts.forEach(c=>{
+    if(c[0]==='v') s+='<line x1="'+sxF(c[1]).toFixed(1)+'" x2="'+sxF(c[1]).toFixed(1)+'" y1="'+syF(c[3]).toFixed(1)+'" y2="'+syF(c[2]).toFixed(1)+'" stroke="var(--ink-2)" stroke-width="1.2" stroke-dasharray="5 4"/>';
+    else           s+='<line y1="'+syF(c[1]).toFixed(1)+'" y2="'+syF(c[1]).toFixed(1)+'" x1="'+sxF(c[2]).toFixed(1)+'" x2="'+sxF(c[3]).toFixed(1)+'" stroke="var(--ink-2)" stroke-width="1.2" stroke-dasharray="5 4"/>';
+  });
+  document.getElementById('ov-delta').innerHTML = s + fieldPoints();
+  drawCbarD(mx);
+  hookPts('ov-delta','tip-delta', i=>{
+    const b=r.pPrev[i], a=r.p[i];
+    return 'p antes: '+fmt(b,3)+'\np después: '+fmt(a,3)+'\nΔp = '+(a-b>=0?'+':'')+fmt(100*(a-b),2)+' pp';
+  });
+}
+function drawCbar(id, toAlpha, labels){
+  let s='';
+  for(let i=0;i<60;i++){
+    const c=blend(toAlpha(i/59));
+    s+='<rect x="'+(i*150/60).toFixed(2)+'" y="0" width="'+(150/60+0.6).toFixed(2)+'" height="9" fill="rgb('+c.map(Math.round).join(',')+')"/>';
+  }
+  s+='<rect x="0" y="0" width="150" height="9" fill="none" stroke="var(--rule)"/>';
+  labels.forEach(l=>{ s+=txt(l[0]*150, 21, l[1], {size:10, anchor:l[0]<0.1?'start':l[0]>0.9?'end':'middle'}); });
+  document.getElementById(id).innerHTML=s;
+}
+function drawCbarP(){ drawCbar('cbar-p', t=>Math.sign(t-0.5)*Math.pow(Math.abs(2*t-1),0.85)*0.56, [[0,'0'],[0.5,'0,5'],[1,'1']]); }
+function drawCbarD(mx){ drawCbar('cbar-d', t=>Math.sign(t-0.5)*Math.pow(Math.abs(2*t-1),0.8)*0.56,
+  [[0,'−'+fmt(100*mx,1)],[0.5,'0'],[1,'+'+fmt(100*mx,1)+' pp']]); }
+
+/* ---------------- tira de probabilidades ---------------- */
+function drawStrip(){
+  const r=MODEL[round];
+  const W=520,H=300,ML=68,MR=14,MT=34,MB=50, iw=W-ML-MR, ih=H-MT-MB;
+  const sx=scale(0,1,ML,ML+iw), rowY=[MT+ih*0.76, MT+ih*0.24];
+  let s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Probabilidad asignada a cada punto, por clase real">';
+  [0,0.25,0.5,0.75,1].forEach(t=>{
+    s+='<line x1="'+sx(t).toFixed(1)+'" x2="'+sx(t).toFixed(1)+'" y1="'+MT+'" y2="'+(MT+ih)+'" stroke="var(--rule-soft)"/>';
+    s+=txt(sx(t), MT+ih+22, fmt(t,2), {anchor:'middle'});
+  });
+  s+='<line x1="'+sx(THR).toFixed(1)+'" x2="'+sx(THR).toFixed(1)+'" y1="'+(MT-4)+'" y2="'+(MT+ih)+'" stroke="var(--ink)" stroke-width="1.3" stroke-dasharray="4 4"/>';
+  s+=txt(sx(THR)+5, MT+6, 'umbral '+fmt(THR,2), {size:10.5, fill:'var(--ink-2)'});
+  s+=txt(ML+iw/2, MT+ih+42, 'probabilidad asignada', {anchor:'middle', size:11});
+  ['clase 0','clase 1'].forEach((lb,k)=>{
+    s+='<line x1="'+ML+'" x2="'+(ML+iw)+'" y1="'+rowY[k].toFixed(1)+'" y2="'+rowY[k].toFixed(1)+'" stroke="var(--rule-soft)"/>';
+    s+=txt(ML-10, rowY[k]+4, lb, {anchor:'end', size:12, fill:'var(--'+(k?'p1':'p0')+')'});
+  });
+  s+=txt(ML, MT-12, '← cree que es 0', {size:11});
+  s+=txt(ML+iw, MT-12, 'cree que es 1 →', {anchor:'end', size:11});
+  for(let i=0;i<N;i++) s+=mark(i, sx(r.p[i]), rowY[Y[i]]+JIT[i]*20, 3.6);
+  s+='</svg>';
+  document.getElementById('chart-strip').innerHTML=s;
+  hookPts('chart-strip','tip-strip', i=>'clase real: '+Y[i]+'\np = '+fmt(MODEL[round].p[i],3));
+}
+
+/* ---------------- curva de pesos ---------------- */
+function drawH(){
+  const r=MODEL[round];
+  const W=520,H=300,ML=54,MR=14,MT=26,MB=50, iw=W-ML-MR, ih=H-MT-MB;
+  const sx=scale(0,1,ML,ML+iw), sy=scale(0,0.27,MT+ih,MT);
+  let s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Peso de cada punto según su probabilidad">';
+  ticks(0,0.25,4).forEach(t=>{ const y=sy(t);
+    s+='<line x1="'+ML+'" x2="'+(ML+iw)+'" y1="'+y.toFixed(1)+'" y2="'+y.toFixed(1)+'" stroke="var(--rule-soft)"/>'+txt(ML-10,y+4,fmt(t,2),{anchor:'end'}); });
+  [0,0.25,0.5,0.75,1].forEach(t=>{ s+=txt(sx(t), MT+ih+22, fmt(t,2), {anchor:'middle'}); });
+  s+=txt(ML+iw/2, MT+ih+42, 'probabilidad asignada', {anchor:'middle', size:11});
+  s+='<line x1="'+ML+'" x2="'+(ML+iw)+'" y1="'+(MT+ih)+'" y2="'+(MT+ih)+'" stroke="var(--rule)"/>';
+  let d=''; for(let k=0;k<=120;k++){ const p=k/120; d+=(k?'L':'M')+sx(p).toFixed(1)+' '+sy(p*(1-p)).toFixed(1); }
+  s+='<path d="'+d+'" fill="none" stroke="var(--ink-3)" stroke-width="1.4" stroke-dasharray="5 4" opacity=".75"/>';
+  s+=txt(sx(0.5), sy(0.25)-11, 'peso máximo  h = 0,25', {anchor:'middle', size:11});
+  const ord=DATA.map((_,i)=>i).sort((a,b)=>r.h[a]-r.h[b]);
+  for(const i of ord) s+=mark(i, sx(r.p[i]), sy(r.h[i]), 3.6);
+  s+='</svg>';
+  document.getElementById('chart-h').innerHTML=s;
+  hookPts('chart-h','tip-h', i=>'clase real: '+Y[i]+'\np = '+fmt(MODEL[round].p[i],3)+'\nh = '+fmt(MODEL[round].h[i],4));
+}
+
+/* ---------------- árbol ---------------- */
+function drawTree(){
+  const m=Math.max(1,round), root=MODEL[m].tree;
+  const leaves=[], levels=[];
+  (function walk(nd,d){ nd._d=d; (levels[d]=levels[d]||[]).push(nd);
+    if(nd.leaf){ nd._pos=leaves.length; leaves.push(nd); return; }
+    walk(nd.left,d+1); walk(nd.right,d+1); nd._pos=(nd.left._pos+nd.right._pos)/2; })(root,0);
+  const maxD=levels.length-1, NW=132, NH=44, GX=18, GY=40;
+  const W=Math.max(320, leaves.length*(NW+GX)), H=(maxD+1)*(NH+GY)-GY+16;
+  const px=p=>p*(NW+GX)+NW/2, py=d=>8+d*(NH+GY);
+  let s='<svg viewBox="0 0 '+W+' '+H+'" style="min-width:'+W+'px" role="img" aria-label="Árbol de la ronda">';
+  (function links(nd){ if(nd.leaf) return;
+    [nd.left,nd.right].forEach((ch,k)=>{
+      const x1=px(nd._pos),y1=py(nd._d)+NH,x2=px(ch._pos),y2=py(ch._d);
+      s+='<path d="M'+x1+' '+y1+' C'+x1+' '+(y1+GY/2)+' '+x2+' '+(y2-GY/2)+' '+x2+' '+y2+'" fill="none" stroke="var(--rule)" stroke-width="1.4"/>';
+      s+=txt((x1+x2)/2+(k?12:-12), y1+GY/2+4, k?'no':'sí', {size:10, anchor:'middle'});
+      links(ch); }); })(root);
+  (function nodes(nd){
+    const x=px(nd._pos)-NW/2, y=py(nd._d), cx=x+NW/2;
+    if(nd.leaf){
+      const col='var(--'+(nd.w>0?'p1':'p0')+')';
+      s+='<line x1="'+x+'" x2="'+(x+NW)+'" y1="'+y+'" y2="'+y+'" stroke="'+col+'" stroke-width="2"/>';
+      s+=txt(cx, y+20, 'w = '+(nd.w>0?'+':'')+fmt(nd.w,2), {size:13, anchor:'middle', fill:col});
+      s+=txt(cx, y+35, nd.n+' pts · peso '+fmt(nd.H,1), {size:10.5, anchor:'middle'});
+    } else {
+      s+='<line x1="'+x+'" x2="'+(x+NW)+'" y1="'+y+'" y2="'+y+'" stroke="var(--rule)" stroke-width="2"/>';
+      s+=txt(cx, y+20, FNAME[nd.f]+' &lt; '+fmt(nd.thr,2), {size:13, anchor:'middle', fill:'var(--ink)'});
+      s+=txt(cx, y+35, 'gain '+fmt(nd.gain,2), {size:10.5, anchor:'middle'});
+      nodes(nd.left); nodes(nd.right);
+    } })(root);
+  s+='</svg>';
+  document.getElementById('chart-tree').innerHTML=s;
+}
+
+/* ---------------- log loss ---------------- */
+function drawLoss(){
+  const W=520,H=300,ML=54,MR=14,MT=20,MB=50, iw=W-ML-MR, ih=H-MT-MB;
+  const vals=MODEL.map(r=>r.loss);
+  let lo=Math.min.apply(null,vals), hi=Math.max.apply(null,vals);
+  const pad=(hi-lo)*0.12||0.05; lo=Math.max(0,lo-pad); hi+=pad;
+  const sx=scale(0,MROUNDS,ML,ML+iw), sy=scale(lo,hi,MT+ih,MT);
+  let s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Log loss por ronda">';
+  ticks(lo,hi,4).forEach(t=>{ if(t<lo||t>hi) return; const y=sy(t);
+    s+='<line x1="'+ML+'" x2="'+(ML+iw)+'" y1="'+y.toFixed(1)+'" y2="'+y.toFixed(1)+'" stroke="var(--rule-soft)"/>'+txt(ML-10,y+4,fmt(t,2),{anchor:'end'}); });
+  [0,10,20,30].forEach(t=>{ s+=txt(sx(t), MT+ih+22, String(t), {anchor:'middle'}); });
+  s+=txt(ML+iw/2, MT+ih+42, 'ronda', {anchor:'middle', size:11});
+  s+='<line x1="'+ML+'" x2="'+(ML+iw)+'" y1="'+(MT+ih)+'" y2="'+(MT+ih)+'" stroke="var(--rule)"/>';
+  const up=vals.slice(0,round+1);
+  s+='<path d="M'+sx(0).toFixed(1)+' '+(MT+ih)+' '+up.map((v,i)=>'L'+sx(i).toFixed(1)+' '+sy(v).toFixed(1)).join(' ')+' L'+sx(round).toFixed(1)+' '+(MT+ih)+' Z" fill="var(--sunk)"/>';
+  s+='<path d="'+vals.map((v,i)=>(i?'L':'M')+sx(i).toFixed(1)+' '+sy(v).toFixed(1)).join(' ')+'" fill="none" stroke="var(--rule)" stroke-width="2"/>';
+  s+='<path d="'+up.map((v,i)=>(i?'L':'M')+sx(i).toFixed(1)+' '+sy(v).toFixed(1)).join(' ')+'" fill="none" stroke="var(--ink)" stroke-width="2.2"/>';
+  s+='<circle cx="'+sx(round).toFixed(1)+'" cy="'+sy(vals[round]).toFixed(1)+'" r="5" fill="var(--ink)" stroke="var(--paper)" stroke-width="2"/>';
+  s+=txt(sx(round)+(round>MROUNDS-6?-9:9), sy(vals[round])-11, fmt(vals[round],3), {size:12, fill:'var(--ink)', anchor:round>MROUNDS-6?'end':'start'});
+  for(let i=0;i<=MROUNDS;i++) s+='<rect x="'+(sx(i)-7).toFixed(1)+'" y="'+MT+'" width="14" height="'+ih+'" fill="transparent" data-i="'+i+'" class="pt"/>';
+  s+='</svg>';
+  document.getElementById('chart-loss').innerHTML=s;
+  hookPts('chart-loss','tip-loss', i=>'ronda '+i+'\nlog loss '+fmt(MODEL[i].loss,4), true);
+}
+
+/* ---------------- tooltips ---------------- */
+function hookPts(hostId,tipId,text,clickable){
+  const host=document.getElementById(hostId), tip=document.getElementById(tipId);
+  if(!tip) return;
+  const svg=(host.tagName.toLowerCase()==='svg')?host:host.querySelector('svg');
+  if(!svg) return;
+  svg.addEventListener('mousemove', e=>{
+    const t=e.target;
+    if(t.classList && t.classList.contains('pt')){
+      const b=tip.parentElement.getBoundingClientRect();
+      tip.innerHTML=esc(text(+t.getAttribute('data-i'))).replace(/\n/g,'<br>');
+      tip.style.left=(e.clientX-b.left)+'px'; tip.style.top=(e.clientY-b.top)+'px';
+      tip.classList.add('on');
+    } else tip.classList.remove('on');
+  });
+  svg.addEventListener('mouseleave', ()=>tip.classList.remove('on'));
+  if(clickable) svg.addEventListener('click', e=>{
+    const t=e.target; if(t.classList&&t.classList.contains('pt')) setRound(+t.getAttribute('data-i'));
+  });
+}
+
+/* ---------------- narrativa ---------------- */
+function n(v,d){ return '<span class="num">'+fmt(v,d)+'</span>'; }
+function drawNarrative(){
+  const el=document.getElementById('narrative'), mt=document.getElementById('metrics'), r=MODEL[round];
+  if(round===0){
+    el.innerHTML='<p><b>Ronda 0: todavía no hay ningún árbol.</b> El modelo predice la misma probabilidad en todo el plano, '+n(sig(MODEL[0].F0),3)+', que sale del log-odds de la proporción global de unos. Por eso el mapa está vacío: no hay frontera porque nada distingue un punto de otro.</p>'+
+      '<p>Todos los puntos pesan lo máximo posible, '+n(0.25,3)+': el modelo está igual de indeciso sobre los 160. En la curva de pesos se ve como una sola pila en el tope.</p>';
+  } else {
+    const t=r.tree, prev=MODEL[round-1];
+    const leaves=[]; (function w(nd){ if(nd.leaf){leaves.push(nd);return;} w(nd.left); w(nd.right); })(t);
+    let big=leaves[0]; for(const l of leaves) if(Math.abs(l.w)>Math.abs(big.w)) big=l;
+    let mi=0,mv=0; for(let i=0;i<N;i++){ const d=Math.abs(r.p[i]-prev.p[i]); if(d>mv){ mv=d; mi=i; } }
+    if(t.leaf){
+      el.innerHTML='<p><b>Árbol '+round+': no se pudo partir.</b> Ningún corte dejaba las dos ramas con peso ≥ '+n(P.mcw,2)+', así que quedó una sola hoja de valor '+n(t.w,3)+': un corrimiento parejo de todo el plano.</p>'+
+        '<p>Pasa cuando el modelo ya resolvió a casi todos: con pesos chiquitos, el peso disponible se agota y <span class="mono" style="font-size:.86em">min_child_weight</span> bloquea los cortes. El entrenamiento se frena solo.</p>';
+    } else {
+      el.innerHTML='<p><b>Árbol '+round+'.</b> El mejor corte de la raíz fue <span class="num">'+FNAME[t.f]+' &lt; '+fmt(t.thr,3)+'</span>, con gain '+n(t.gain,2)+' sobre un peso total de '+n(t.H,2)+'. Quedaron '+leaves.length+' hoja'+(leaves.length>1?'s':'')+'.</p>'+
+        '<p>La hoja más fuerte vale '+n(big.w,2)+' en log-odds sobre '+big.n+' puntos. Como solo se suma la fracción η, a un punto parado justo en la frontera lo movería de '+n(0.5,3)+' a '+n(sig(P.eta*big.w),3)+'.</p>'+
+        '<p>El punto que más se movió en toda la ronda pasó de '+n(prev.p[mi],3)+' a '+n(r.p[mi],3)+'. El log loss bajó de '+n(prev.loss,4)+' a '+n(r.loss,4)+'.</p>';
+    }
+  }
+  let fp=0, fn=0, ok=0;
+  for(let i=0;i<N;i++){ const yh=r.p[i]>=THR?1:0;
+    if(yh===Y[i]) ok++; else if(yh===1) fp++; else fn++; }
+  mt.innerHTML=
+    '<div class="metric"><div class="mv">'+fmt(r.loss,4)+'</div><div class="ml">log loss · no depende del umbral</div></div>'+
+    '<div class="metric"><div class="mv">'+fmt(100*ok/N,1)+'%</div><div class="ml">acierto con umbral '+fmt(THR,2)+'</div></div>'+
+    '<div class="metric"><div class="mv">'+fp+' / '+fn+'</div><div class="ml">falsos positivos / negativos</div></div>'+
+    '<div class="metric"><div class="mv">'+fmt(sig(MODEL[0].F0),3)+'</div><div class="ml">tasa base · F₀ = '+(MODEL[0].F0>0?'+':'')+fmt(MODEL[0].F0,3)+'</div></div>';
+  const best=Math.min.apply(null,MODEL.map(x=>x.loss)), at=MODEL.findIndex(x=>x.loss===best);
+  document.getElementById('hint').textContent='El mejor log loss de entrenamiento ('+fmt(best,4)+') llega en la ronda '+at+'. Es error de entrenamiento: en datos nuevos la curva se daría vuelta bastante antes, y ese punto de quiebre es lo que busca el early stopping.';
+}
+
+/* ---------------- orquestación ---------------- */
+function render(){
+  document.getElementById('round-n').textContent=round;
+  document.getElementById('rng-round').value=round;
+  document.getElementById('btn-prev').disabled=round===0;
+  document.getElementById('btn-next').disabled=round===MROUNDS;
+  drawField(); drawDelta(); drawStrip(); drawH(); drawTree(); drawLoss(); drawNarrative();
+}
+function setRound(v){ round=Math.max(0,Math.min(MROUNDS,v|0)); render(); }
+function refit(){ MODEL=fit(P); render(); }
+function stop(){ playing=false; clearInterval(timer); document.getElementById('btn-play').textContent='▶ Entrenar'; }
+function play(){
+  if(playing){ stop(); return; }
+  if(round>=MROUNDS) setRound(0);
+  playing=true; document.getElementById('btn-play').textContent='❚❚ Pausar';
+  timer=setInterval(()=>{ if(round>=MROUNDS){ stop(); return; } setRound(round+1); },700);
+}
+document.getElementById('btn-play').addEventListener('click',play);
+document.getElementById('btn-next').addEventListener('click',()=>{ stop(); setRound(round+1); });
+document.getElementById('btn-prev').addEventListener('click',()=>{ stop(); setRound(round-1); });
+document.getElementById('btn-reset').addEventListener('click',()=>{ stop(); setRound(0); });
+document.getElementById('rng-round').addEventListener('input',e=>{ stop(); setRound(+e.target.value); });
+function bind(id,key,dec,label){
+  document.getElementById(id).addEventListener('input',e=>{
+    P[key]=+e.target.value;
+    document.getElementById(label).textContent=dec===0?String(P[key]):fmt(P[key],dec);
+    stop(); refit();
+  });
+}
+document.getElementById('p-thr').addEventListener('input',e=>{
+  THR=+e.target.value;
+  document.getElementById('v-thr').textContent=fmt(THR,2);
+  drawField(); drawStrip(); drawNarrative();
+});
+bind('p-eta','eta',2,'v-eta'); bind('p-depth','depth',0,'v-depth');
+bind('p-lambda','lambda',1,'v-lambda'); bind('p-mcw','mcw',2,'v-mcw');
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT') return;
+  if(e.key==='ArrowRight'){ stop(); setRound(round+1); }
+  if(e.key==='ArrowLeft'){ stop(); setRound(round-1); }
+});
+/* ---------------- claro / oscuro ---------------- */
+const ROOT=document.documentElement, TBTN=document.getElementById('theme-btn');
+const MQ = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+function isDark(){
+  const t=ROOT.getAttribute('data-theme');
+  return t ? t==='dark' : !!(MQ && MQ.matches);
+}
+function paintTheme(){
+  const d=isDark();
+  TBTN.textContent = d ? '◑ Modo claro' : '◐ Modo oscuro';
+  TBTN.setAttribute('aria-pressed', String(d));
+  drawCbarP(); render(); drawGrow();
+}
+TBTN.addEventListener('click', ()=>{
+  const next = isDark() ? 'light' : 'dark';
+  ROOT.setAttribute('data-theme', next);
+  try{ localStorage.setItem('xgb-tema', next); }catch(e){}
+  paintTheme();
+});
+try{
+  const saved=localStorage.getItem('xgb-tema');
+  if(saved==='dark'||saved==='light') ROOT.setAttribute('data-theme',saved);
+}catch(e){}
+if(MQ && MQ.addEventListener) MQ.addEventListener('change',()=>{ if(!ROOT.getAttribute('data-theme')) paintTheme(); });
+drawCbarP(); render();
+
+/* ================= ilustraciones LightGBM ================= */
+const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* --- 1. crecimiento por nivel vs por mejor hoja --- */
+const GAIN = {1:10, 2:7, 3:2, 4:5, 5:1.2, 6:0.9, 7:0.8, 8:3.5, 9:0.6, 10:0.5, 11:0.4};
+const ORDER_LEVEL = [1,2,3,4,5,6];      // completa cada nivel antes de bajar
+const ORDER_LEAF  = [1,2,4,8,3,5];      // siempre la hoja de mayor ganancia
+const NSTEPS = 6;
+let growStep = NSTEPS, growTimer = null, growPlaying = false;
+
+function growSvg(order, steps, title, W){
+  const H=318, TOP=52, ROWH=50, SLOTS=16, sw=(W-16)/SLOTS;
+  const depthOf=i=>Math.floor(Math.log2(i));
+  const cx=i=>{ const d=depthOf(i), span=Math.pow(2,4-d); return 8+((i-Math.pow(2,d))*span+span/2)*sw; };
+  const cy=i=>TOP+depthOf(i)*ROWH;
+  const done=order.slice(0,steps);
+  const shown={1:true}; done.forEach(i=>{ shown[2*i]=true; shown[2*i+1]=true; });
+  let tot=0; done.forEach(i=>tot+=GAIN[i]);
+  let s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+title+'">';
+  s+=txt(8, 16, title, {size:12, fill:'var(--ink-2)'});
+  done.forEach(i=>{
+    [2*i,2*i+1].forEach(c=>{
+      s+='<line x1="'+cx(i).toFixed(1)+'" y1="'+cy(i)+'" x2="'+cx(c).toFixed(1)+'" y2="'+cy(c)+'" stroke="var(--rule)" stroke-width="1.4"/>';
+    });
+  });
+  Object.keys(shown).forEach(k=>{
+    const i=+k, isSplit=done.indexOf(i)>=0, last=done[done.length-1]===i;
+    const col = isSplit ? 'var(--ink-3)' : 'var(--p1)';
+    s+='<circle cx="'+cx(i).toFixed(1)+'" cy="'+cy(i)+'" r="'+(last?8:6.5)+'" fill="'+(isSplit?'var(--paper)':col)+'" stroke="'+(last?'var(--p1)':col)+'" stroke-width="'+(last?2.4:1.6)+'"/>';
+    if(!isSplit && GAIN[i]!==undefined)
+      s+=txt(cx(i), cy(i)+21, fmt(GAIN[i],1), {size:10, anchor:'middle', fill:'var(--ink-3)'});
+  });
+  const leaves=Object.keys(shown).filter(k=>done.indexOf(+k)<0).length;
+  s+='<line x1="8" x2="'+(W-8)+'" y1="'+(H-32)+'" y2="'+(H-32)+'" stroke="var(--rule-soft)"/>';
+  s+=txt(8, H-12, 'ganancia acumulada '+fmt(tot,1)+'  ·  '+leaves+' hojas', {size:11.5, fill:'var(--ink)'});
+  s+='</svg>';
+  return s;
+}
+function drawGrow(){
+  const host=document.getElementById('fig-grow');
+  host.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:34px">'+
+    '<div>'+growSvg(ORDER_LEVEL, growStep, 'por nivel  ·  depthwise', 460)+'</div>'+
+    '<div>'+growSvg(ORDER_LEAF,  growStep, 'por mejor hoja  ·  leaf-wise', 460)+'</div></div>';
+  document.getElementById('grow-step').textContent='corte '+growStep+' de '+NSTEPS;
+}
+function growStop(){ growPlaying=false; clearInterval(growTimer); document.getElementById('grow-play').textContent='▶ Reproducir'; }
+function growPlay(){
+  if(growPlaying){ growStop(); return; }
+  growPlaying=true; document.getElementById('grow-play').textContent='❚❚ Pausar';
+  growTimer=setInterval(()=>{ growStep = growStep>=NSTEPS ? 0 : growStep+1; drawGrow(); }, 1100);
+}
+document.getElementById('grow-play').addEventListener('click', growPlay);
+drawGrow();
+if(!REDUCED) growPlay(); else growStop();
+paintTheme();
+
+/* --- 2. cortes exactos vs bins --- */
+(function(){
+  const W=460,H=190,ML=6,MR=6, iw=W-ML-MR;
+  const r2=lcg(4242), xs=[];
+  for(let i=0;i<38;i++) xs.push(0.04+0.92*Math.pow(r2(),0.9));
+  xs.sort((a,b)=>a-b);
+  const sx=scale(0,1,ML,ML+iw);
+  let s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Cortes exactos contra histograma de bins">';
+  s+=txt(ML,14,'exacto  ·  un candidato entre cada par de valores',{size:11.5,fill:'var(--ink-2)'});
+  for(let i=0;i<xs.length-1;i++){ const m=(xs[i]+xs[i+1])/2;
+    s+='<line x1="'+sx(m).toFixed(1)+'" x2="'+sx(m).toFixed(1)+'" y1="26" y2="58" stroke="var(--ink-3)" stroke-width="1" opacity=".45"/>'; }
+  xs.forEach(x=>{ s+='<circle cx="'+sx(x).toFixed(1)+'" cy="62" r="3" fill="var(--p1)" fill-opacity=".85"/>'; });
+  s+='<line x1="'+ML+'" x2="'+(ML+iw)+'" y1="62" y2="62" stroke="var(--rule)"/>';
+  s+=txt(ML,80,xs.length-1+' candidatos',{size:11,fill:'var(--ink)'});
+  s+=txt(ML,116,'histograma  ·  un candidato por borde de bin',{size:11.5,fill:'var(--ink-2)'});
+  const NB=8, counts=new Array(NB).fill(0);
+  xs.forEach(x=>counts[Math.min(NB-1,Math.floor(x*NB))]++);
+  const mxc=Math.max.apply(null,counts), bw=iw/NB;
+  for(let b=0;b<NB;b++){
+    const h=8+34*counts[b]/mxc, x0=ML+b*bw;
+    s+='<rect x="'+(x0+1.5).toFixed(1)+'" y="'+(170-h).toFixed(1)+'" width="'+(bw-3).toFixed(1)+'" height="'+h.toFixed(1)+'" fill="var(--p1)" fill-opacity=".28" stroke="var(--p1)" stroke-width="1"/>';
+    if(b>0) s+='<line x1="'+x0.toFixed(1)+'" x2="'+x0.toFixed(1)+'" y1="124" y2="170" stroke="var(--ink)" stroke-width="1.2" stroke-dasharray="3 3"/>';
+  }
+  s+='<line x1="'+ML+'" x2="'+(ML+iw)+'" y1="170" y2="170" stroke="var(--rule)"/>';
+  s+=txt(ML,186,(NB-1)+' candidatos  ·  '+NB+' bins',{size:11,fill:'var(--ink)'});
+  s+='</svg>';
+  document.getElementById('fig-hist').innerHTML=s;
+})();
+
+/* --- 3. histograma del hermano por resta --- */
+(function(){
+  const padre=[9,15,22,18,11,6], hijoA=[3,6,14,5,4,2];
+  const W=460,H=168, bw=14, gap=4, gw=6*(bw+gap)-gap, sep=46;
+  const x0=[6, 6+gw+sep, 6+2*(gw+sep)];
+  const mx=Math.max.apply(null,padre), base=120;
+  let s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="El histograma del hermano es la resta">';
+  [['padre',padre,'var(--ink-3)'],['hijo A',hijoA,'var(--p0)'],['hijo B = padre − A',padre.map((v,i)=>v-hijoA[i]),'var(--p1)']].forEach((g,k)=>{
+    s+=txt(x0[k], 18, g[0], {size:11, fill:'var(--ink-2)'});
+    g[1].forEach((v,i)=>{
+      const h=6+66*v/mx;
+      s+='<rect x="'+(x0[k]+i*(bw+gap))+'" y="'+(base-h).toFixed(1)+'" width="'+bw+'" height="'+h.toFixed(1)+'" fill="'+g[2]+'" fill-opacity=".3" stroke="'+g[2]+'" stroke-width="1"/>';
+      s+=txt(x0[k]+i*(bw+gap)+bw/2, base+14, String(v), {size:9.5, anchor:'middle'});
+    });
+    s+='<line x1="'+x0[k]+'" x2="'+(x0[k]+gw)+'" y1="'+base+'" y2="'+base+'" stroke="var(--rule)"/>';
+  });
+  s+=txt(x0[0]+gw+18, base-24, '−', {size:22, fill:'var(--ink-3)', font:'Source Serif 4, serif'});
+  s+=txt(x0[1]+gw+18, base-24, '=', {size:22, fill:'var(--ink-3)', font:'Source Serif 4, serif'});
+  s+=txt(6, H-6, 'solo se recorre el hijo más chico; el otro se obtiene restando', {size:11, fill:'var(--ink)'});
+  s+='</svg>';
+  document.getElementById('fig-sib').innerHTML=s;
+})();
+
+/* --- 4. EFB --- */
+(function(){
+  const R=9, C=6, cw=15, ch=12, gp=3;
+  const r3=lcg(99), cells=[];
+  for(let i=0;i<R;i++) cells.push([Math.floor(r3()*3), 3+Math.floor(r3()*3)]);
+  const W=460,H=196, x0=8, y0=36;
+  let s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Seis columnas esparsas empaquetadas en dos">';
+  s+=txt(x0,18,'6 columnas one-hot',{size:11.5,fill:'var(--ink-2)'});
+  for(let i=0;i<R;i++) for(let c=0;c<C;c++){
+    const on = cells[i][0]===c || cells[i][1]===c;
+    s+='<rect x="'+(x0+c*(cw+gp))+'" y="'+(y0+i*(ch+gp))+'" width="'+cw+'" height="'+ch+'" rx="1" fill="'+(on?(c<3?'var(--p0)':'var(--p1)'):'var(--sunk)')+'" fill-opacity="'+(on?'.85':'1')+'"/>';
+  }
+  const gridw=C*(cw+gp)-gp, ax=x0+gridw+22, xb=x0+gridw+74;
+  s+=txt(xb,18,'2 paquetes',{size:11.5,fill:'var(--ink-2)'});
+  for(let i=0;i<R;i++) for(let c=0;c<2;c++){
+    s+='<rect x="'+(xb+c*(cw+gp))+'" y="'+(y0+i*(ch+gp))+'" width="'+cw+'" height="'+ch+'" rx="1" fill="'+(c?'var(--p1)':'var(--p0)')+'" fill-opacity=".85"/>';
+    s+=txt(xb+c*(cw+gp)+cw/2, y0+i*(ch+gp)+9, String((c?cells[i][1]-3:cells[i][0])+1), {size:8.5, anchor:'middle', fill:'var(--paper)'});
+  }
+  const my=y0+(R*(ch+gp)-gp)/2;
+  s+='<line x1="'+ax+'" x2="'+(ax+30)+'" y1="'+my+'" y2="'+my+'" stroke="var(--ink-3)" stroke-width="1.4"/>';
+  s+='<path d="M'+(ax+30)+' '+my+' l-7 -4 v8 z" fill="var(--ink-3)"/>';
+  s+=txt(x0, H-6, 'el número guarda cuál columna del grupo estaba prendida', {size:11, fill:'var(--ink)'});
+  s+='</svg>';
+  document.getElementById('fig-efb').innerHTML=s;
+})();
+
+/* --- 5. categóricas ordenadas por gradiente --- */
+(function(){
+  const cats=['A','B','C','D','E','F','G','H'];
+  const val =[ 0.9, -1.4, 0.4, 1.6, -0.7, -1.9, 1.1, -0.2];
+  const W=460,H=262, ML=8, bw=40, gp=11, SC=20;
+  let s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Categorías en orden original y ordenadas por gradiente">';
+  function row(order, base, labelY, label, cut){
+    s+=txt(ML, labelY, label, {size:11.5, fill:'var(--ink-2)'});
+    order.forEach((k,i)=>{
+      const v=val[k], h=SC*Math.abs(v), x=ML+i*(bw+gp);
+      s+='<rect x="'+x+'" y="'+(v>0?base-h:base).toFixed(1)+'" width="'+bw+'" height="'+h.toFixed(1)+'" fill="var(--'+(v>0?'p1':'p0')+')" fill-opacity=".3" stroke="var(--'+(v>0?'p1':'p0')+')" stroke-width="1"/>';
+      s+=txt(x+bw/2, base+(v>0?16:-7), cats[k], {size:11, anchor:'middle'});
+    });
+    s+='<line x1="'+ML+'" x2="'+(ML+order.length*(bw+gp)-gp)+'" y1="'+base+'" y2="'+base+'" stroke="var(--rule)"/>';
+    if(cut!==undefined){
+      const x=ML+cut*(bw+gp)-gp/2;
+      s+='<line x1="'+x+'" x2="'+x+'" y1="'+(base-44)+'" y2="'+(base+44)+'" stroke="var(--ink)" stroke-width="1.6"/>';
+      s+=txt(x+7, base-34, 'un solo corte', {size:10.5, fill:'var(--ink)'});
+    }
+  }
+  row([0,1,2,3,4,5,6,7], 76, 18, 'en el orden original ningún corte las separa');
+  const ord=cats.map((_,i)=>i).sort((a,b)=>val[a]-val[b]);
+  row(ord, 212, 154, 'ordenadas por G/H de cada categoría', 3);
+  s+='</svg>';
+  document.getElementById('fig-cat').innerHTML=s;
+})();
+})();
+</script>
+
+</body>
+</html>
